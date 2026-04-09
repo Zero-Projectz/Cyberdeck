@@ -1,0 +1,165 @@
+﻿
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Runner Link</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.46/dist/index.js"></script>
+
+    <style>
+        :root { 
+            --accent: #fbff00; 
+            --bg: #000; 
+            --glow: 0 0 15px rgba(251, 255, 0, 0.4);
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            margin: 0; background: var(--bg); color: #fff; 
+            font-family: -apple-system, system-ui, sans-serif;
+            height: 100vh; display: flex; flex-direction: column;
+            padding-top: env(safe-area-inset-top);
+        }
+
+        header { 
+            padding: 15px; border-bottom: 2px solid var(--accent); 
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: var(--glow);
+        }
+
+        /* De Theme Switcher die je miste */
+        .themes {
+            display: flex; gap: 10px; padding: 10px 15px;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid #222;
+            overflow-x: auto;
+        }
+        .swatch {
+            min-width: 25px; height: 25px; border-radius: 4px;
+            border: 1px solid #fff; cursor: pointer;
+        }
+
+        #status { background: var(--accent); color: #000; font-size: 10px; font-weight: bold; padding: 5px 15px; text-transform: uppercase; letter-spacing: 1px; }
+
+        #chat { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+        
+        .msg { padding: 12px; border-radius: 2px; max-width: 85%; font-size: 14px; border: 1px solid #222; line-height: 1.4; }
+        .ai { border-left: 4px solid var(--accent); background: rgba(255,255,255,0.02); }
+        .user { align-self: flex-end; border-color: var(--accent); color: var(--accent); }
+
+        .input-box { 
+            padding: 15px; padding-bottom: calc(15px + env(safe-area-inset-bottom)); 
+            display: flex; gap: 10px; border-top: 1px solid #222; background: #000;
+        }
+        input { flex: 1; background: #0a0a0a; border: 1px solid #333; color: #fff; padding: 12px; font-size: 16px; outline: none; border-radius: 0; }
+        input:focus { border-color: var(--accent); }
+        
+        button { background: var(--accent); border: none; padding: 10px 20px; font-weight: 900; text-transform: uppercase; font-style: italic; }
+        button:disabled { opacity: 0.2; }
+    </style>
+</head>
+<body>
+
+<header>
+    <strong style="color:var(--accent); font-style:italic; letter-spacing:1px;">RUNNER_LINK // EXT_01</strong>
+    <button onclick="location.reload()" style="font-size:9px; padding:4px 8px; background:none; color:#fff; border:1px solid #fff;">RELOAD</button>
+</header>
+
+<div class="themes">
+    <div class="swatch" style="background:#fbff00" onclick="setTheme('#fbff00')"></div>
+    <div class="swatch" style="background:#ff00ea" onclick="setTheme('#ff00ea')"></div>
+    <div class="swatch" style="background:#00f2ff" onclick="setTheme('#00f2ff')"></div>
+    <div class="swatch" style="background:#00ff41" onclick="setTheme('#00ff41')"></div>
+    <div class="swatch" style="background:#ffffff" onclick="setTheme('#ffffff')"></div>
+</div>
+
+<div id="status">STATUS: CONNECTING...</div>
+
+<div id="chat">
+    <div class="msg ai"><b>UPLINK_STABLE.</b> Selecteer een kleur-profiel en wacht op READY-status.</div>
+</div>
+
+<div class="input-box">
+    <input type="text" id="in" placeholder="Wachten op systeem..." disabled>
+    <button id="btn" onclick="send()" disabled>Push</button>
+</div>
+
+<script>
+    let engine;
+    const statusEl = document.getElementById('status');
+    const inputEl = document.getElementById('in');
+    const btnEl = document.getElementById('btn');
+
+    function setTheme(color) {
+        document.documentElement.style.setProperty('--accent', color);
+        document.documentElement.style.setProperty('--glow', `0 0 15px ${color}66`);
+        localStorage.setItem('runner-theme', color);
+    }
+
+    // Check of library er is
+    const checkLib = setInterval(() => {
+        if (typeof webllm !== 'undefined') {
+            clearInterval(checkLib);
+            statusEl.innerText = "STATUS: READY";
+            inputEl.disabled = false;
+            btnEl.disabled = false;
+            inputEl.placeholder = "Enter command...";
+        }
+    }, 500);
+
+    window.onload = () => {
+        const saved = localStorage.getItem('runner-theme');
+        if(saved) setTheme(saved);
+    };
+
+    async function send() {
+        const val = inputEl.value.trim();
+        if(!val) return;
+        append('user', val);
+        inputEl.value = '';
+
+        if (!navigator.gpu) {
+            append('ai', "<b>HARDWARE_BLOCK:</b> WebGPU niet gevonden. Check Safari settings.");
+            return;
+        }
+
+        try {
+            if(!engine) {
+                statusEl.innerText = "STATUS: MOUNTING_DATA_CORES...";
+                engine = new webllm.MLCEngine();
+                engine.setInitProgressCallback((r) => {
+                    statusEl.innerText = `SYNCING: ${Math.round(r.progress * 100)}%`;
+                });
+                await engine.reload("SmolLM-135B-Instruct-v0.2-q4f16_1-MLC");
+            }
+            statusEl.innerText = "STATUS: PROCESSING...";
+            const b = append('ai', '...');
+            let full = "";
+            const res = await engine.chat.completions.create({ messages: [{role:"user", content:val}], stream: true });
+            for await (const chunk of res) {
+                full += chunk.choices[0]?.delta?.content || "";
+                b.innerText = full;
+            }
+            statusEl.innerText = "STATUS: READY";
+        } catch (e) {
+            append('ai', "<b>FATAL:</b> " + e.message);
+        }
+    }
+
+    function append(role, txt) {
+        const d = document.createElement('div');
+        d.className = 'msg ' + role;
+        d.innerHTML = txt;
+        document.getElementById('chat').appendChild(d);
+        document.getElementById('chat').scrollTop = 99999;
+        return d;
+    }
+</script>
+</body>
+</html>
